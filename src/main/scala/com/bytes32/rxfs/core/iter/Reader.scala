@@ -4,68 +4,70 @@ import java.nio.ByteBuffer
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption.READ
 
-import com.bytes32.rxfs.core.JavaConversions.forkJoinPool2ExecutionContext
+import com.bytes32.rxfs.core.FutureWrapper
 import com.bytes32.rxfs.core.io.RxAsynchronousFileChannel
 import com.bytes32.rxfs.core.op.ReadOp
-import play.api.libs.iteratee.Enumerator.TreatCont0
-import play.api.libs.iteratee.Step.Done
-import play.api.libs.iteratee._
+import play.api.libs.iteratee.{Cont, Input, Iteratee, Enumerator}
+import play.api.libs.iteratee.Enumerator.TreatCont1
 
-import scala.concurrent._
-import scala.concurrent.duration.Duration
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.forkjoin.ForkJoinPool
-import scala.util.Try
 
-class Reader(position: Long = 0L, chunkSize: Int = 8 * 1024)
-            (implicit op: ReadOp, executor: ForkJoinPool = new ForkJoinPool(5))
-  extends Future[Array[Byte]] {
-
-
-  lazy val readBuffer = new Array[Byte](chunkSize)
-  lazy val read: Future[Array[Byte]] = op.read(ByteBuffer.wrap(readBuffer), position)
-    .map { case (readBytes, attachment) => readBuffer}(executor)
-
-  def next(pos: Long = position + chunkSize, size: Int = chunkSize): Reader = {
-    new Reader(pos, size)(op, executor)
-  }
-
-  override def onComplete[U](f: (Try[Array[Byte]]) => U)(implicit executor: ExecutionContext): Unit = read.onComplete(f)
-
-  override def isCompleted: Boolean = read.isCompleted
-
-  override def value: Option[Try[Array[Byte]]] = read.value
-
-  @throws[Exception](classOf[Exception])
-  override def result(atMost: Duration)(implicit permit: CanAwait): Array[Byte] = read.result(atMost)
-
-  @throws[InterruptedException](classOf[InterruptedException])
-  @throws[TimeoutException](classOf[TimeoutException])
-  override def ready(atMost: Duration)(implicit permit: CanAwait): Reader.this.type = {
-    result(atMost)(permit)
-    if (this.read.isCompleted) this
-    else throw new TimeoutException("Futures timed out after [" + atMost + "]")
-  }
-
+trait AsyncReader extends (ReadOp => AsyncReader) with FutureWrapper[Option[(Array[Byte], Int)]] {
+  val position: Long
+  val chunkSize: Int
 }
 
-object Reader {
-  def readFile(file: String, chunkSize: Int = 1024 * 8)
-              (implicit forkJoinPool: ForkJoinPool): Reader = {
-    implicit val channel = RxAsynchronousFileChannel(Paths.get(file), READ)
-    new Reader(0, chunkSize)
+case class Reader(position: Long = 0, chunkSize: Int = 8 * 1024,
+                  inner: Future[Option[(Array[Byte], Int)]] = Future.successful(None)) extends AsyncReader {
+
+  override def apply(op: ReadOp): Reader = {
+    //TODO: get rid of this, return the buffer from op.read
+    val readBuffer = new Array[Byte](chunkSize)
+    val readFuture = op.read(ByteBuffer.wrap(readBuffer), position)
+      .map {
+      case (-1, _) => None
+      case (`chunkSize`, _) => Some((readBuffer, chunkSize))
+      case (readBytes, _) =>
+        val dest = new Array[Byte](readBytes)
+        Array.copy(readBuffer, 0, dest, 0, readBytes)
+        Some((dest, readBytes))
+    }(op.executor)
+    Reader(position + chunkSize, chunkSize, readFuture)
   }
+}
+
+object Readers {
+  def fromFile(file: String, chunkSize: Int = 1024 * 8)
+              (implicit forkJoinPool: ForkJoinPool): AsyncReader = {
+    implicit val channel = RxAsynchronousFileChannel(Paths.get(file), READ)
+    val reader = Reader()
+    reader(channel)
+  }
+
+  def unfoldM[S, E](s: S)(f: S => Future[Option[(S, E)]])(implicit ec: ExecutionContext): Enumerator[E] =
+    Enumerator.checkContinue1(s)(new TreatCont1[E, S] {
+      def apply[A](loop: (Iteratee[E, A], S) => Future[Iteratee[E, A]], s: S, k: (Input[E]) => Iteratee[E, A]): Future[Iteratee[E, A]] = {
+        f(s).flatMap {
+          case Some((newS, e)) => loop(k(Input.El(e)), newS)
+          case None => Future.successful(Cont(k))
+        }
+      }
+    })
 
   def toEnumerator(file: String, chunkSize: Int = 1024 * 8)
                   (implicit forkJoinPool: ForkJoinPool): Enumerator[Array[Byte]] = {
     implicit val channel = RxAsynchronousFileChannel(Paths.get(file), READ)
-    val badReader = new Reader(0, chunkSize)
-    Enumerator.repeatM{
-      badReader.next()
-    }
-//    Enumerator.checkContinue0[Array[Byte]](new TreatCont0[Array[Byte]] {
-//      override def apply[A](loop: (Iteratee[Array[Byte], A]) => Future[Iteratee[Array[Byte], A]],
-//                            k: (Input[Array[Byte]]) => Iteratee[Array[Byte], A]): Future[Iteratee[Array[Byte], A]] = ???
-//    })
+
+    val empty = Reader(chunkSize = chunkSize)
+    val enumerator: Enumerator[Array[Byte]] = unfoldM[Reader, Array[Byte]](empty(channel)) {
+      (current: Reader) =>
+        current.map {
+          case Some((bytes, size)) => Some(current(channel) -> bytes)
+          case None => None
+        }(channel.executor)
+    }(channel.executor)
+    enumerator
   }
 }
 
