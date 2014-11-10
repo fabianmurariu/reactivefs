@@ -6,13 +6,16 @@ import com.bytes32.rxfs.core.JavaConversions.Promise2CompletionHandlerJavaIntege
 
 import scala.concurrent.Future
 
-trait WriteOp {
-  self: AsyncOp =>
+trait WriteOp extends AsyncOp{
 
   def write[A >: Null <: AnyRef](src: ByteBuffer, position: Long, attachment: Option[A] = None): Future[(Int, A)] = {
     async[Integer, A, Int] {
       handler =>
         channel.write(src, position, attachment.orNull, handler)
     }
+  }
+
+  def write(dst: Array[Byte], position: Long): Future[(Int, Array[Byte])] = {
+    write(ByteBuffer.wrap(dst), position, Some(dst))
   }
 }

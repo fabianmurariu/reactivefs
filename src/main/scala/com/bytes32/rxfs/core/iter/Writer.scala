@@ -1,23 +1,25 @@
 package com.bytes32.rxfs.core.iter
 
-import java.nio.file.Paths
-import java.nio.file.StandardOpenOption.{WRITE, CREATE}
+import com.bytes32.rxfs.core.io.WriteIO
+import com.bytes32.rxfs.core.op.WriteOp
 
-import com.bytes32.rxfs.core.io.RxAsynchronousFileChannel
-import play.api.libs.iteratee.{Enumerator, Step, Iteratee}
+import scala.concurrent.Future
 
-import scala.concurrent.forkjoin.ForkJoinPool
-import scala.concurrent.{ExecutionContext, Future}
-import com.bytes32.rxfs.core.JavaConversions.forkJoinPool2ExecutionContext
+case class Writer(position: Long = 0, chunkSize: Int = 8 * 1024,
+                  inner: Future[Option[(Array[Byte], Int)]] = Future.successful(None)) extends WriteIO {
 
-object Writer {
-
-  def apply[A](file: String, chunkSize: Int = 1024 * 8)
-              (implicit forkJoinPool: ForkJoinPool): Enumerator[Array[Byte]] = {
-    val channel = RxAsynchronousFileChannel(Paths.get(file), WRITE, CREATE)
-    Enumerator.generateM[Array[Byte]]({
-      ???
-    })(forkJoinPool)
+  override def apply(op: WriteOp): Writer = {
+    //TODO: for now this just writes empty bytes
+    val writeFuture = op.write(new Array[Byte](chunkSize), position)
+      .map {
+      case (-1, _) => None
+      case (`chunkSize`, bytes) => Some((bytes, chunkSize))
+      case (readBytes, bytes) =>
+        val dest = new Array[Byte](readBytes)
+        Array.copy(bytes, 0, dest, 0, readBytes)
+        Some((dest, readBytes))
+    }(op.executor)
+    Writer(position + chunkSize, chunkSize, writeFuture)
   }
 
 }
