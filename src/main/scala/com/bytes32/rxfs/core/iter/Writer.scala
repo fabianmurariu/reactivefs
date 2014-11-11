@@ -1,5 +1,6 @@
 package com.bytes32.rxfs.core.iter
 
+import java.io.File
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption._
 
@@ -23,9 +24,9 @@ case class Writer(position: Long = 0,
 
 object Writers {
 
-  def toIteratee(file: String)
+  def toIteratee(file: File)
                 (implicit forkJoinPool: ForkJoinPool): Iteratee[Array[Byte], Writer] = {
-    implicit val channel = RxAsynchronousFileChannel(Paths.get(file), WRITE)
+    implicit val channel = RxAsynchronousFileChannel(Paths.get(file.getAbsolutePath), WRITE)
 
     foldM[Array[Byte]](Writer(0)) {
       case (writer, bytes) => writer(channel, bytes)
@@ -33,7 +34,7 @@ object Writers {
 
   }
 
-  def foldM[E](state: Writer)(f: (Writer, E) => Writer)(implicit ec: ExecutionContext): Iteratee[E, Writer] = {
+  private def foldM[E](state: Writer)(f: (Writer, E) => Writer)(implicit ec: ExecutionContext): Iteratee[E, Writer] = {
 
     def step(s: Writer)(i: Input[E]): Iteratee[E, Writer] = i match {
 
