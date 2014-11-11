@@ -50,8 +50,7 @@ object Readers {
                   (implicit forkJoinPool: ForkJoinPool): Enumerator[Array[Byte]] = {
     implicit val channel = RxAsynchronousFileChannel(Paths.get(file), READ)
 
-    val empty = Reader(chunkSize = chunkSize)
-    val enumerator: Enumerator[Array[Byte]] = unfoldM[Reader, Array[Byte]](empty(channel)) {
+    val enumerator: Enumerator[Array[Byte]] = unfoldM[Reader, Array[Byte]](Reader(0, chunkSize)(channel)) {
       current => current.map {
           case Some((bytes, size)) => Some(current(channel) -> bytes)
           case None => None

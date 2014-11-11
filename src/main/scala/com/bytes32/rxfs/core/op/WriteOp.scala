@@ -15,7 +15,7 @@ trait WriteOp extends AsyncOp{
     }
   }
 
-  def write(dst: Array[Byte], position: Long): Future[(Int, Array[Byte])] = {
-    write(ByteBuffer.wrap(dst), position, Some(dst))
+  def write(dst: Array[Byte], position: Long): Future[(Int, _)] = {
+    write(ByteBuffer.wrap(dst), position)
   }
 }

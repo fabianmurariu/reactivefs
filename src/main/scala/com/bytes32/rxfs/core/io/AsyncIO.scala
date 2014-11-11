@@ -1,12 +1,14 @@
 package com.bytes32.rxfs.core.io
 
 import com.bytes32.rxfs.core.FutureWrapper
-import com.bytes32.rxfs.core.op.{WriteOp, AsyncOp, ReadOp}
+import com.bytes32.rxfs.core.op.{ReadOp, WriteOp}
+import play.api.libs.iteratee.{Step, Iteratee}
 
-trait AsyncIO extends FutureWrapper[Option[(Array[Byte], Int)]] {
+import scala.concurrent.{ExecutionContext, Future}
+
+trait AsyncIO {
   val position: Long
-  val chunkSize: Int
 }
 
-trait WriteIO extends (WriteOp => AsyncIO) with AsyncIO
-trait ReadIO extends (ReadOp => AsyncIO) with AsyncIO
+trait ReadIO extends (ReadOp => ReadIO) with AsyncIO with FutureWrapper[Option[(Array[Byte], Int)]]
+trait WriteIO extends ((WriteOp, Array[Byte]) => WriteIO) with AsyncIO with FutureWrapper[Int]
