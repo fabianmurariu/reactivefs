@@ -20,7 +20,7 @@ class WriterSpec extends FlatSpec with Matchers with HasTempFile{
       file =>
         val iterateeWriter = Writers.toIteratee(file)(new ForkJoinPool(3))
         val eventualWriter = input |>>> iterateeWriter
-        result(result(eventualWriter, 5 seconds), 5 seconds) // should be(9)
+        result(eventualWriter, 5 seconds) // should be(9)
 
         val stream = new BufferedInputStream(new FileInputStream(file))
         val bytes = new Array[Byte](9)
@@ -35,7 +35,7 @@ class WriterSpec extends FlatSpec with Matchers with HasTempFile{
       file =>
         val iterateeWriter = Writers.toIteratee(file)(new ForkJoinPool(3))
         val eventualWriter = input |>>> Enumeratee.take(2) &>> iterateeWriter
-        result(result(eventualWriter, 5 seconds), 5 seconds) // should be(4)
+        result(eventualWriter, 5 seconds) // should be(4)
 
         val stream = new BufferedInputStream(new FileInputStream(file))
         val bytes = new Array[Byte](9)
