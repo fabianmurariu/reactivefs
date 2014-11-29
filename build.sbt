@@ -2,7 +2,7 @@ organization      := "com.bytes32"
 
 version           := "0.1"
 
-scalaVersion      := "2.11.2"
+scalaVersion      := "2.11.4"
 
 scalacOptions     := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature")
 
@@ -16,10 +16,11 @@ resolvers ++= Seq(
 libraryDependencies ++= {
   val akkaV = "2.3.5"
   Seq(
-    "com.typesafe.play"   %%  "play-iteratees"      % "2.3.5" withSources(),
-    "com.typesafe.akka"   %%  "akka-actor"          % akkaV withSources() withJavadoc(),
-    "com.typesafe.akka"   %%  "akka-testkit"        % akkaV   % "test",
-    "org.scalatest"       %% "scalatest"            % "2.2.1" % "test"
+    "com.typesafe.play"   %%  "play-iteratees"    % "2.3.5" withSources(),
+    "com.typesafe.akka"   %%  "akka-actor"        % akkaV withSources() withJavadoc(),
+    "org.scala-lang"      %%  "scala-pickling"    % "0.9.2-SNAPSHOT" withSources(),
+    "com.typesafe.akka"   %%  "akka-testkit"      % akkaV   % "test",
+    "org.scalatest"       %%  "scalatest"         % "2.2.1" % "test"
   )
 }
 
